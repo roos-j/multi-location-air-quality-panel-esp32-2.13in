@@ -5,6 +5,10 @@ the [ELECROW CrowPanel ESP32 E-Paper HMI 2.13-inch Display](https://www.elecrow.
 
 It should also work on any other ESP32 boards with an e-ink display of resolution at least 250x122, up to updating pin numbers and possibly updating the driver if not SSD1680-based.
 
+Screenshot:
+
+![Board](https://raw.githubusercontent.com/roos-j/multi-location-air-quality-panel-esp32-2.13in/screenshots/assets/board.jpg)
+
 ### Features
 
 - Monochrome 250x122 display, ESP32S3 with WiFi
