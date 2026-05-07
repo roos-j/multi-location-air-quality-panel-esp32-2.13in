@@ -45,7 +45,6 @@ tm timeinfo;
 bool timeValid = false;
 
 void setup() {
-  // put your setup code here, to run once:
   Serial0.begin(115200);
   
   printWakeReason();
@@ -57,7 +56,6 @@ void setup() {
   syncTime();
 
   displayInit();
-  // helloWorld();
 
   fetchAllWeatherInfo();
   fetchAllAirQualityInfo();
@@ -305,40 +303,6 @@ void displayInfo() {
   displayDeepSleep();
   Serial0.println("AQ display refreshed");
 }
-
-// void drawAllWeatherIcons() {
-//   uint16_t iconY = SSD1680_HEIGHT - 24 - PAD;
-//   uint16_t iconX = PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_SUN, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_PARTLY_CLOUDY, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_CLOUD, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_FOG, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_DRIZZLE, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_RAIN, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_SNOW, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_THUNDER, 24, 24, BLACK);
-//   iconX += 24 + PAD;
-
-//   displayDrawBitmap(iconX, iconY, ICON_UNKNOWN, 24, 24, BLACK);
-
-//   displayUpdate();
-//   displayDeepSleep();
-// }
 
 /** Deep sleep */
 void goToDeepSleep(uint64_t seconds) {

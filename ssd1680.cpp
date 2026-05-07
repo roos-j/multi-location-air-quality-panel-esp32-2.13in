@@ -235,31 +235,3 @@ void displayDeepSleep(void)
     delay(20);
 }
 
-void dispayUpdate(void)
-{
-    displayUpdate();
-}
-
-void DrawCharFont(uint16_t x, uint16_t y, char c, const BitmapFont *font, uint8_t color) {
-  uint32_t offset = fontCharOffset(font, c);
-
-  for (uint8_t row = 0; row < font->height; row++) {
-    for (uint8_t col = 0; col < font->width; col++) {
-      uint32_t byteIndex = offset + row * font->bytesPerRow + (col / 8);
-      uint8_t bitmapByte = pgm_read_byte(&font->data[byteIndex]);
-      uint8_t bitMask = 0x80 >> (col % 8);
-
-      if (bitmapByte & bitMask) {
-        displayDrawPixel(x + col, y + row, color);
-      }
-    }
-  }
-}
-
-void DrawStringFont(uint16_t x, uint16_t y, const char *text, const BitmapFont *font, uint8_t color) {
-  while (*text) {
-    DrawCharFont(x, y, *text, font, color);
-    x += font->width;
-    text++;
-  }
-}
