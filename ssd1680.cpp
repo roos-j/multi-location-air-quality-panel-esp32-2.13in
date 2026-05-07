@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+static constexpr uint8_t PIN_PWR = 7;
 static constexpr uint8_t PIN_SCK = 12;
 static constexpr uint8_t PIN_MOSI = 11;
 static constexpr uint8_t PIN_RES = 10;
@@ -92,6 +93,10 @@ static void drawChar(uint16_t x, uint16_t y, char c, const BitmapFont *font, uin
 
 void displayInit(void)
 {
+
+    pinMode(PIN_PWR, OUTPUT);
+    digitalWrite(PIN_PWR, HIGH);
+
     pinMode(PIN_SCK, OUTPUT);
     pinMode(PIN_MOSI, OUTPUT);
     pinMode(PIN_RES, OUTPUT);

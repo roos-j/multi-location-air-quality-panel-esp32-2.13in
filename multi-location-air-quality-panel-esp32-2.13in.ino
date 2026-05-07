@@ -37,6 +37,8 @@ struct WeatherLocation {
 /* TODO:
 - if data not available write n/a
 - restrict to recently seen PurpleAir sensors
+- store preferences in filesystem
+- store weather data time series and display 24h max etc.
 - WiFi config page
 */
 
@@ -48,9 +50,6 @@ void setup() {
   Serial0.begin(115200);
   
   printWakeReason();
-
-  pinMode(7, OUTPUT);     // Set pin 7 as output
-  digitalWrite(7, HIGH);  // Set pin 7 high to turn on screen power
 
   connectWiFi();
   syncTime();
