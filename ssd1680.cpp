@@ -9,7 +9,7 @@ static constexpr uint8_t PIN_DC = 13;
 static constexpr uint8_t PIN_CS = 14;
 static constexpr uint8_t PIN_BUSY = 9;
 
-uint8_t dispData[SSD1680_BUFFER_BYTES];
+uint8_t dispData[BUFFER_BYTES];
 
 static void writeByte(uint8_t value)
 {
@@ -150,14 +150,14 @@ void displayClear(void)
 
 void displayDrawPixel(uint16_t x, uint16_t y, uint8_t color)
 {
-    if (x >= SSD1680_WIDTH || y >= SSD1680_HEIGHT)
+    if (x >= SCR_WIDTH || y >= SCR_HEIGHT)
     {
         return;
     }
 
     uint16_t xpoint = y;
-    uint16_t ypoint = SSD1680_WIDTH - x - 1;
-    uint32_t addr = (uint32_t)xpoint / 8 + (uint32_t)ypoint * SSD1680_ROW_BYTES;
+    uint16_t ypoint = SCR_WIDTH - x - 1;
+    uint32_t addr = (uint32_t)xpoint / 8 + (uint32_t)ypoint * ROW_BYTES;
     uint8_t mask = 0x80 >> (xpoint % 8);
 
     if (color == BLACK)
@@ -215,7 +215,7 @@ void displayUpdate(void)
     writeData(0x00);
 
     writeCommand(0x24);
-    for (uint32_t i = 0; i < SSD1680_BUFFER_BYTES; i++)
+    for (uint32_t i = 0; i < BUFFER_BYTES; i++)
     {
         writeData((uint8_t)~dispData[i]);
     }

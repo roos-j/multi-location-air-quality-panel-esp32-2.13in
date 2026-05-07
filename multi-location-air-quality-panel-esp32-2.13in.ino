@@ -296,7 +296,7 @@ void displayInfo() {
 
   if (timeValid) {
     strftime(linebuf, sizeof(linebuf), "Last update: %Y-%m-%d %H:%M:%S", &timeinfo);
-    displayDrawString(PAD, SSD1680_HEIGHT - 14, linebuf, BLACK, 12);
+    displayDrawString(PAD, SCR_HEIGHT - 14, linebuf, BLACK, 12);
   }
 
   displayUpdate();

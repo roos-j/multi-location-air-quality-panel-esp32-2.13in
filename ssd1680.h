@@ -6,15 +6,15 @@
 #include <pgmspace.h>
 #include "fonts.h"
 
-#define SSD1680_WIDTH 250
-#define SSD1680_HEIGHT 122
-#define SSD1680_ROW_BYTES ((SSD1680_HEIGHT + 7) / 8)
-#define SSD1680_BUFFER_BYTES (SSD1680_ROW_BYTES * SSD1680_WIDTH)
+#define SCR_WIDTH 250
+#define SCR_HEIGHT 122
+#define ROW_BYTES ((SCR_HEIGHT + 7) / 8)
+#define BUFFER_BYTES (ROW_BYTES * SCR_WIDTH)
 
 #define WHITE 0xFF
 #define BLACK 0x00
 
-extern uint8_t dispData[SSD1680_BUFFER_BYTES];
+extern uint8_t dispData[BUFFER_BYTES];
 
 void displayInit(void);
 void displayClear(void);
@@ -23,6 +23,5 @@ void displayDrawBitmap(uint16_t x, uint16_t y, const uint8_t *bitmap, uint16_t w
 void displayDrawString(uint16_t x, uint16_t y, const char *s, uint8_t color, uint16_t sizey);
 void displayDeepSleep(void);
 void displayUpdate(void);
-void dispayUpdate(void);
 
 #endif
