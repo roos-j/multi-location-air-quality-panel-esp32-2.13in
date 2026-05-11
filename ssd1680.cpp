@@ -2,13 +2,13 @@
 
 #include <string.h>
 
-static constexpr uint8_t PIN_PWR = 7;
-static constexpr uint8_t PIN_SCK = 12;
-static constexpr uint8_t PIN_MOSI = 11;
-static constexpr uint8_t PIN_RES = 10;
-static constexpr uint8_t PIN_DC = 13;
-static constexpr uint8_t PIN_CS = 14;
-static constexpr uint8_t PIN_BUSY = 9;
+constexpr uint8_t PIN_PWR = 7;
+constexpr uint8_t PIN_SCK = 12;
+constexpr uint8_t PIN_MOSI = 11;
+constexpr uint8_t PIN_RES = 10;
+constexpr uint8_t PIN_DC = 13;
+constexpr uint8_t PIN_CS = 14;
+constexpr uint8_t PIN_BUSY = 9;
 
 uint8_t dispData[BUFFER_BYTES];
 

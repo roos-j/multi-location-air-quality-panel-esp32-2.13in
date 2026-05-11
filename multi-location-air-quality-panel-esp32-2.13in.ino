@@ -4,6 +4,7 @@
 #include <time.h>
 #include <esp_sleep.h>
 #include <string.h>
+#include <Preferences.h>
 
 #include "weather_icons.h"
 #include "ssd1680.h"
@@ -14,6 +15,8 @@ struct WeatherLocation {
   float longitude;
   uint32_t purpleAirSensorIndex;
   const char *purpleAirReadKey;
+  uint32_t purpleAirLastRead; // Time stamp of last read attempt
+  bool purpleAirLastReadDirty; // Whether last read has changed this boot cycle
 
   float temperature;
   uint8_t weathercode;  // Sunny/rainy/etc.
@@ -34,6 +37,9 @@ struct WeatherLocation {
 #define PAD 2 /* Gap in pixels between lines */
 #define FONTSIZE 24
 
+#define SLEEP_SECONDS 60*15    /* Sleep time between boots in seconds */
+#define PURPLEAIR_READ_INTERVAL 60*60  /* Interval between purple air reads in seconds */
+
 /* TODO:
 - if data not available write n/a
 - restrict to recently seen PurpleAir sensors
@@ -46,10 +52,15 @@ struct WeatherLocation {
 tm timeinfo;
 bool timeValid = false;
 
+Preferences prefs;
+uint32_t bootCount;
+
 void setup() {
   Serial0.begin(115200);
   
   printWakeReason();
+
+  readPreferences();
 
   connectWiFi();
   syncTime();
@@ -61,10 +72,57 @@ void setup() {
 
   displayInfo();
 
-  goToDeepSleep(60 * 15);  // Wake up every 10 mins
+  writePreferences();
+  goToDeepSleep(SLEEP_SECONDS);
 }
 
+/** Read preferences from flash memory */
+void readPreferences() {
+  prefs.begin("state", true);
+  bootCount = prefs.getUInt("bootCount", 0);
+  Serial0.printf("Boot count: %u\n", bootCount);
+  char buf[32];
+  for (uint8_t i = 0; i < N; i++) {
+    snprintf(buf, sizeof(buf), "lastRead%u", i);
+    locations[i].purpleAirLastRead = prefs.getUInt(buf, 0);
+    snprintf(buf, sizeof(buf), "lastReadPM%u", i);
+    locations[i].pm2_5 = prefs.getFloat(buf, 0.0);
+    locations[i].purpleAirLastReadDirty = false;
+    Serial0.print(locations[i].name);
+    Serial0.print(" last PurpleAir read: ");
+    printTimestamp(locations[i].purpleAirLastRead);
+    Serial0.println();
+  }
+  prefs.end();
+}
 
+/** Write preferences to flash */
+void writePreferences() {
+  prefs.begin("state", false);
+
+  prefs.putUInt("bootCount", bootCount + 1);
+  char buf[32];
+  for (uint8_t i = 0; i < N; i++) {
+    if (locations[i].purpleAirLastReadDirty) {
+      snprintf(buf, sizeof(buf), "lastRead%u", i);
+      prefs.putUInt(buf, locations[i].purpleAirLastRead);
+      snprintf(buf, sizeof(buf), "lastReadPM%u", i);
+      prefs.putFloat(buf, locations[i].pm2_5);
+    }
+  }
+  
+  prefs.end();
+}
+
+/** Print unix timestamp to serial, formatted to current timezone */ 
+void printTimestamp(uint32_t ts) {
+  time_t raw = (time_t)ts;
+  tm timeinfo;
+
+  localtime_r(&raw, &timeinfo);  // fill timeinfo from timestamp as local time
+
+  Serial0.print(&timeinfo, "%Y-%m-%d %H:%M:%S");
+}
 
 bool fetchWeatherInfo(WeatherLocation *info) {
   if (info == nullptr) {
@@ -153,6 +211,16 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
     return false;
   }
 
+  uint32_t cur_time = (uint32_t)mktime(&timeinfo);
+  if (cur_time - info->purpleAirLastRead < PURPLEAIR_READ_INTERVAL) {
+    Serial0.print("PM2_5 value for ");
+    Serial0.print(info->name);
+    Serial0.println("still current, skipping read");
+    return false;
+  }
+  info->purpleAirLastRead = cur_time;
+  info->purpleAirLastReadDirty = true;
+
   char url[256];
 
   if (info->purpleAirReadKey != nullptr && info->purpleAirReadKey[0] != '\0') {
@@ -217,7 +285,7 @@ void fetchAllAirQualityInfo() {
       Serial0.print(" ug/m3\n");
     } else {
       Serial0.print(locations[i].name);
-      Serial0.println(": AQ fetch failed");
+      Serial0.println(": AQ fetch failed/skipped");
     }
   }
 }
@@ -296,6 +364,8 @@ void displayInfo() {
   if (timeValid) {
     strftime(linebuf, sizeof(linebuf), "Last update: %Y-%m-%d %H:%M:%S", &timeinfo);
     displayDrawString(PAD, SCR_HEIGHT - 14, linebuf, BLACK, 12);
+  } else {
+    displayDrawString(PAD, SCR_HEIGHT - 14, "Last update time unavailable", BLACK, 12);
   }
 
   displayUpdate();
