@@ -37,8 +37,8 @@ struct WeatherLocation {
 #define PAD 2 /* Gap in pixels between lines */
 #define FONTSIZE 24
 
-#define SLEEP_SECONDS 60*15    /* Sleep time between boots in seconds */
-#define PURPLEAIR_READ_INTERVAL 60*60  /* Interval between purple air reads in seconds */
+#define SLEEP_SECONDS 60*30    /* Sleep time between boots in seconds */
+#define PURPLEAIR_READ_INTERVAL 59*30  /* Interval between purple air reads in seconds */
 
 /* TODO:
 - if data not available write n/a
@@ -367,6 +367,9 @@ void displayInfo() {
   } else {
     displayDrawString(PAD, SCR_HEIGHT - 14, "Last update time unavailable", BLACK, 12);
   }
+  snprintf(linebuf, sizeof(linebuf), "boot #%u", bootCount);
+  int bootX = SCR_WIDTH - PAD - strlen(linebuf) * 6;
+  displayDrawString(bootX, SCR_HEIGHT - 14, linebuf, BLACK, 12);
 
   displayUpdate();
   displayDeepSleep();
