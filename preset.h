@@ -6,6 +6,7 @@ constexpr uint8_t N = 3;
 const char *ssid = "YOUR_WIFI_SSID";
 const char *pwd = "YOUR_WIFI_PASSWORD";
 const char *purpleAirApiKey = "YOUR_PURPLEAIR_API_KEY";
+const char *purpleAirTargetField = "pm2.5_30minute";
 
 WeatherLocation locations[N] = {
   {

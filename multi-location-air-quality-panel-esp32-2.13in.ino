@@ -8,6 +8,7 @@
 
 #include "weather_icons.h"
 #include "ssd1680.h"
+#include "util.h"
 
 struct WeatherLocation {
   const char *name;
@@ -15,13 +16,11 @@ struct WeatherLocation {
   float longitude;
   uint32_t purpleAirSensorIndex;
   const char *purpleAirReadKey;
-  uint32_t purpleAirLastRead; // Time stamp of last read attempt
-  bool purpleAirLastReadDirty; // Whether last read has changed this boot cycle
 
+  NvsProp<TimedValue> pm2_5{nullptr};
   float temperature;
   uint8_t weathercode;  // Sunny/rainy/etc.
   uint8_t humidity;
-  float pm2_5;
 };
 
 #if defined(__has_include) && __has_include("mypreset.h")
@@ -38,13 +37,11 @@ struct WeatherLocation {
 #define FONTSIZE 24
 
 #define SLEEP_SECONDS 60*30    /* Sleep time between boots in seconds */
-#define PURPLEAIR_READ_INTERVAL 59*30  /* Interval between purple air reads in seconds */
+#define PURPLEAIR_READ_INTERVAL 60*30  /* Interval between purple air reads in seconds */
 
 /* TODO:
 - if data not available write n/a
 - restrict to recently seen PurpleAir sensors
-- store preferences in filesystem
-- store weather data time series and display 24h max etc.
 - WiFi config page
 */
 
@@ -53,11 +50,19 @@ tm timeinfo;
 bool timeValid = false;
 
 Preferences prefs;
-uint32_t bootCount;
+NvsProp<uint32_t> bootCount{"bootCount"};
+
+/** Time series storage */
+TsStore tsStore;
 
 void setup() {
   Serial0.begin(115200);
   
+  if (!tsStore.begin()) {
+    Serial0.println("LittleFS failed");
+    return;
+  }
+
   printWakeReason();
 
   readPreferences();
@@ -72,43 +77,39 @@ void setup() {
 
   displayInfo();
 
+  uint64_t bytes = tsStore.totalSize();
+  Serial0.printf("Time series storage: %llu bytes\n", bytes);
+
   writePreferences();
   goToDeepSleep(SLEEP_SECONDS);
 }
 
-/** Read preferences from flash memory */
+/** Read preferences from NVS */
 void readPreferences() {
   prefs.begin("state", true);
-  bootCount = prefs.getUInt("bootCount", 0);
-  Serial0.printf("Boot count: %u\n", bootCount);
-  char buf[32];
+  bootCount.load(prefs, 0);
+  Serial0.printf("Boot count: %u\n", bootCount.get());
+  static char pm2_5Keys[N][32];
   for (uint8_t i = 0; i < N; i++) {
-    snprintf(buf, sizeof(buf), "lastRead%u", i);
-    locations[i].purpleAirLastRead = prefs.getUInt(buf, 0);
-    snprintf(buf, sizeof(buf), "lastReadPM%u", i);
-    locations[i].pm2_5 = prefs.getFloat(buf, 0.0);
-    locations[i].purpleAirLastReadDirty = false;
+    snprintf(pm2_5Keys[i], sizeof(pm2_5Keys[i]), "%s_pm25", locations[i].name);
+    locations[i].pm2_5 = NvsProp<TimedValue>(pm2_5Keys[i]);
+    locations[i].pm2_5.load(prefs, TimedValue{});
     Serial0.print(locations[i].name);
     Serial0.print(" last PurpleAir read: ");
-    printTimestamp(locations[i].purpleAirLastRead);
+    printTimestamp(locations[i].pm2_5.get().time);
     Serial0.println();
   }
   prefs.end();
 }
 
-/** Write preferences to flash */
+/** Write preferences to NVS */
 void writePreferences() {
   prefs.begin("state", false);
 
-  prefs.putUInt("bootCount", bootCount + 1);
-  char buf[32];
+  bootCount.set(bootCount.get() + 1);
+  bootCount.save(prefs);
   for (uint8_t i = 0; i < N; i++) {
-    if (locations[i].purpleAirLastReadDirty) {
-      snprintf(buf, sizeof(buf), "lastRead%u", i);
-      prefs.putUInt(buf, locations[i].purpleAirLastRead);
-      snprintf(buf, sizeof(buf), "lastReadPM%u", i);
-      prefs.putFloat(buf, locations[i].pm2_5);
-    }
+    locations[i].pm2_5.save(prefs);
   }
   
   prefs.end();
@@ -212,14 +213,13 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
   }
 
   uint32_t cur_time = (uint32_t)mktime(&timeinfo);
-  if (cur_time - info->purpleAirLastRead < PURPLEAIR_READ_INTERVAL) {
+  TimedValue pm2_5 = info->pm2_5.get();
+  if (cur_time - pm2_5.time < PURPLEAIR_READ_INTERVAL) {
     Serial0.print("PM2_5 value for ");
     Serial0.print(info->name);
-    Serial0.println("still current, skipping read");
+    Serial0.println(" still current, skipping read");
     return false;
   }
-  info->purpleAirLastRead = cur_time;
-  info->purpleAirLastReadDirty = true;
 
   char url[256];
 
@@ -227,15 +227,17 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
     snprintf(
       url,
       sizeof(url),
-      "https://api.purpleair.com/v1/sensors/%u?fields=pm2.5_cf_1&read_key=%s",
+      "https://api.purpleair.com/v1/sensors/%u?fields=%s&read_key=%s",
       info->purpleAirSensorIndex,
+      purpleAirTargetField,
       info->purpleAirReadKey);
   } else {
     snprintf(
       url,
       sizeof(url),
-      "https://api.purpleair.com/v1/sensors/%u?fields=pm2.5_cf_1",
-      info->purpleAirSensorIndex);
+      "https://api.purpleair.com/v1/sensors/%u?fields=%s",
+      info->purpleAirSensorIndex,
+      purpleAirTargetField);
   }
 
   HTTPClient http;
@@ -270,7 +272,10 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
     return false;
   }
 
-  info->pm2_5 = sensor["pm2.5_cf_1"].as<float>();
+  pm2_5.value = sensor["pm2.5_cf_1"].as<float>();
+  pm2_5.time = cur_time;
+  info->pm2_5.set(pm2_5);
+  tsStore.append(info->pm2_5.getKey(), pm2_5);
 
   return true;
 }
@@ -281,7 +286,7 @@ void fetchAllAirQualityInfo() {
     if (ok) {
       Serial0.print(locations[i].name);
       Serial0.print(": PM2.5 ");
-      Serial0.print(locations[i].pm2_5, 1);
+      Serial0.print(locations[i].pm2_5.get().value, 1);
       Serial0.print(" ug/m3\n");
     } else {
       Serial0.print(locations[i].name);
@@ -354,7 +359,7 @@ void displayInfo() {
     snprintf(linebuf, sizeof(linebuf), "%u%%", locations[i].humidity);
     displayDrawString(humX, y, linebuf, BLACK, FONTSIZE);
 
-    snprintf(linebuf, sizeof(linebuf), "%.0f", locations[i].pm2_5);
+    snprintf(linebuf, sizeof(linebuf), "%.0f", locations[i].pm2_5.get().value);
     displayDrawString(pmX, y, linebuf, BLACK, FONTSIZE);
 
     y += FONTSIZE + PAD;
@@ -367,7 +372,7 @@ void displayInfo() {
   } else {
     displayDrawString(PAD, SCR_HEIGHT - 14, "Last update time unavailable", BLACK, 12);
   }
-  snprintf(linebuf, sizeof(linebuf), "boot #%u", bootCount);
+  snprintf(linebuf, sizeof(linebuf), "boot #%u", bootCount.get());
   int bootX = SCR_WIDTH - PAD - strlen(linebuf) * 6;
   displayDrawString(bootX, SCR_HEIGHT - 14, linebuf, BLACK, 12);
 

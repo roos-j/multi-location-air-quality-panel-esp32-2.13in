@@ -30,3 +30,7 @@ Screenshot:
 - Download/clone this repository and open in Arduino IDE
 - Configure target locations and PurpleAir sensors in `preset.h` (get a [PurpleAir API key](https://community.purpleair.com/t/about-the-purpleair-api/7145))
 - Connect board via USB, select port and select `ESP32S3 Dev Module` in Arduino IDE, then compile/upload
+
+### AI Usage
+
+gpt-5.5 was used to generate font bitmaps, weather icons, and a lot of the utility code.
