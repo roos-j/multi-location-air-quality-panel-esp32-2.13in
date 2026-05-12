@@ -73,14 +73,22 @@ void readPreferences() {
   prefs.begin("state", true);
   bootCount.load(prefs, 0);
   Serial0.printf("Boot count: %u\n", bootCount.get());
-  static char pm2_5Keys[N][32];
+  static char pm2_5Keys[2*N][32]; // This is a bit hacky, refactor
   for (uint8_t i = 0; i < N; i++) {
     snprintf(pm2_5Keys[i], sizeof(pm2_5Keys[i]), "%s_pm25", locations[i].name);
     locations[i].pm2_5 = NvsProp<TimedValue>(pm2_5Keys[i]);
     locations[i].pm2_5.load(prefs, TimedValue{});
     Serial0.print(locations[i].name);
-    Serial0.print(" last PurpleAir read: ");
+    Serial0.print(" last PurpleAir read PM2.5: ");
     printTimestamp(locations[i].pm2_5.get().time);
+    Serial0.println();
+
+    snprintf(pm2_5Keys[i+N], sizeof(pm2_5Keys[i+N]), "%s_pm25max", locations[i].name);
+    locations[i].pm2_5max = NvsProp<TimedValue>(pm2_5Keys[i+N]);
+    locations[i].pm2_5max.load(prefs, TimedValue{});
+    Serial0.print(locations[i].name);
+    Serial0.printf(" daily max value %.f at ", locations[i].pm2_5max.get().value);
+    printTimestamp(locations[i].pm2_5max.get().time);
     Serial0.println();
   }
   prefs.end();
@@ -94,6 +102,7 @@ void writePreferences() {
   bootCount.save(prefs);
   for (uint8_t i = 0; i < N; i++) {
     locations[i].pm2_5.save(prefs);
+    locations[i].pm2_5max.save(prefs);
   }
   
   prefs.end();
@@ -187,6 +196,35 @@ void fetchAllWeatherInfo() {
   }
 }
 
+void updateDailyMax(NvsProp<TimedValue> &dailyMax, const TimedValue &reading) {
+  if (!reading.hasValue()) {
+    return;
+  }
+
+  TimedValue current = dailyMax.get();
+
+  bool sameDay = false;
+
+  if (current.hasValue()) {
+    time_t currentRaw = (time_t)current.time;
+    time_t readingRaw = (time_t)reading.time;
+
+    struct tm currentTm;
+    struct tm readingTm;
+
+    localtime_r(&currentRaw, &currentTm);
+    localtime_r(&readingRaw, &readingTm);
+
+    sameDay =
+      currentTm.tm_year == readingTm.tm_year &&
+      currentTm.tm_yday == readingTm.tm_yday;
+  }
+
+  if (!sameDay || reading.value > current.value) {
+    dailyMax.set(reading);
+  }
+}
+
 bool fetchAirQualityInfo(WeatherLocation *info) {
   if (info == nullptr) {
     return false;
@@ -271,14 +309,11 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
     readingTime = cur_time;
   }
 
-  // JsonObject sensor = doc["sensor"];
+  TimedValue newValue{readingTime, value};
 
-  // if (!sensor.containsKey(purpleAirTargetField)) {
-  //   Serial0.printf("PurpleAir '%s' missing\n", purpleAirTargetField);
-  //   return false;
-  // }
+  updateDailyMax(info->pm2_5max, newValue);
 
-  info->pm2_5.set(TimedValue{readingTime, value});
+  info->pm2_5.set(newValue);
   tsStore.append(info->pm2_5.getKey(), pm2_5);
 
   return true;
@@ -332,8 +367,6 @@ void connectWiFi(bool access_point) {
   Serial0.println(WiFi.localIP());
 }
 
-#include <time.h>
-
 /** Fetch current time using WiFi connection */
 void syncTime() {
   configTzTime(
@@ -358,18 +391,20 @@ void displayInfo() {
 
   char linebuf[64];
 
-  const uint16_t CHAR_W = 12;  // FONTSIZE 24 -> about 12 px wide
+  const uint16_t CHAR_W = 12;  // FONTSIZE 24 -> 12 px wide
   const uint16_t nameX = 3 * PAD;
   const uint16_t iconX = nameX + 4 * CHAR_W + PAD + 1;  // 3-char name
   const uint16_t tempX = iconX + 24 + 2*PAD;
   const uint16_t humX = tempX + 4 * CHAR_W + PAD;  // enough for "-12 C"
   const uint16_t pmX = humX + 4 * CHAR_W + PAD;    // enough for "100%"
+  const uint16_t pmmaxX = pmX + 3 * CHAR_W + 2*PAD;
 
   // Header line
-  displayDrawString(nameX, y, "loc", BLACK, 16);
-  displayDrawString(tempX, y, "temp", BLACK, 16);
-  displayDrawString(humX, y, "hum", BLACK, 16);
-  displayDrawString(pmX, y, "pm2.5", BLACK, 16);
+  displayDrawString(nameX, y, "Loc.", BLACK, 16);
+  displayDrawString(tempX, y, "T", BLACK, 16);
+  displayDrawString(humX, y, "RH", BLACK, 16);
+  displayDrawString(pmX, y+2, "PM2.5", BLACK, 12);
+  displayDrawString(pmmaxX+4, y+2, "max", BLACK, 12);
 
   y += 16 + PAD;
 
@@ -387,6 +422,11 @@ void displayInfo() {
 
     snprintf(linebuf, sizeof(linebuf), "%.0f", locations[i].pm2_5.get().value);
     displayDrawString(pmX, y, linebuf, BLACK, FONTSIZE);
+
+    if (locations[i].pm2_5max.get().hasValue()) {
+      snprintf(linebuf, sizeof(linebuf), "%.0f", locations[i].pm2_5max.get().value);
+      displayDrawString(pmmaxX, y + 8, linebuf, BLACK, 12);
+    }
 
     y += FONTSIZE + PAD;
   }

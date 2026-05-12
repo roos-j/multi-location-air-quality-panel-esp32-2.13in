@@ -21,6 +21,7 @@ struct WeatherLocation {
   const char *purpleAirReadKey;
 
   NvsProp<TimedValue> pm2_5{nullptr};
+  NvsProp<TimedValue> pm2_5max{nullptr}; // Track daily maximum value
   float temperature;
   uint8_t weathercode;  // Sunny/rainy/etc.
   uint8_t humidity;
