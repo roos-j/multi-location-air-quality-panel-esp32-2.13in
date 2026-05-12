@@ -103,4 +103,6 @@ public:
   bool makePath(char *out, size_t outSize, const char *seriesKey, uint32_t timestamp);
 };
 
+void formatBytes(size_t bytes, char *out, size_t outSize);
+
 #endif

@@ -21,6 +21,7 @@ void displayClear(void);
 void displayDrawPixel(uint16_t x, uint16_t y, uint8_t color);
 void displayDrawBitmap(uint16_t x, uint16_t y, const uint8_t *bitmap, uint16_t width, uint16_t height, uint8_t color);
 void displayDrawString(uint16_t x, uint16_t y, const char *s, uint8_t color, uint16_t sizey);
+void displayDrawCenteredString(uint16_t y, const char *s, uint8_t color, uint16_t sizey);
 void displayDeepSleep(void);
 void displayUpdate(void);
 

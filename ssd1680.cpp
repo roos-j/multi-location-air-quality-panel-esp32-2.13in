@@ -207,6 +207,21 @@ void displayDrawString(uint16_t x, uint16_t y, const char *s, uint8_t color, uin
     }
 }
 
+void displayDrawCenteredString(uint16_t y, const char *s, uint8_t color, uint16_t sizey) {
+  if (s == nullptr) {
+    return;
+  }
+
+  uint16_t textWidth = (strlen(s) * sizey) / 2;
+  int16_t x = ((int16_t)SCR_WIDTH - (int16_t)textWidth) / 2;
+
+  if (x < 0) {
+    x = 0;
+  }
+
+  displayDrawString((uint16_t)x, y, s, color, sizey);
+}
+
 void displayUpdate(void)
 {
     writeCommand(0x3C);

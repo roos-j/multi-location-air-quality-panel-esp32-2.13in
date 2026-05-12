@@ -231,3 +231,13 @@ bool TsStore::makePath(char *out, size_t outSize, const char *seriesKey, uint32_
 
   return n > 0 && static_cast<size_t>(n) < outSize;
 }
+
+void formatBytes(size_t bytes, char *out, size_t outSize) {
+  if (bytes < 1024) {
+    snprintf(out, outSize, "%u B", (unsigned)bytes);
+  } else if (bytes < 1024UL * 1024UL) {
+    snprintf(out, outSize, "%.1f KB", bytes / 1024.0f);
+  } else {
+    snprintf(out, outSize, "%.2f MB", bytes / (1024.0f * 1024.0f));
+  }
+}

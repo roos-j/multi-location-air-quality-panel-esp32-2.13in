@@ -1,48 +1,12 @@
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
-#include <time.h>
-#include <esp_sleep.h>
-#include <string.h>
-#include <Preferences.h>
-
+#include "app.h"
 #include "weather_icons.h"
-#include "ssd1680.h"
-#include "util.h"
-
-struct WeatherLocation {
-  const char *name;
-  float latitude;
-  float longitude;
-  uint32_t purpleAirSensorIndex;
-  const char *purpleAirReadKey;
-
-  NvsProp<TimedValue> pm2_5{nullptr};
-  float temperature;
-  uint8_t weathercode;  // Sunny/rainy/etc.
-  uint8_t humidity;
-};
-
-#if defined(__has_include) && __has_include("mypreset.h")
-#include "mypreset.h"
-#else
-#include "preset.h"
-#endif
-
-// Pin wiring for menu and exit buttons
-#define MENU_KEY GPIO_NUM_2
-#define EXIT_KEY GPIO_NUM_1
-
-#define PAD 2 /* Gap in pixels between lines */
-#define FONTSIZE 24
-
-#define SLEEP_SECONDS 60*30    /* Sleep time between boots in seconds */
-#define PURPLEAIR_READ_INTERVAL 60*30  /* Interval between purple air reads in seconds */
 
 /* TODO:
 - if data not available write n/a
 - restrict to recently seen PurpleAir sensors
-- WiFi config page
+- night time weather icons
+- wifi connectivity symbol, failure handling
+- config page
 */
 
 /** Current time */
@@ -55,6 +19,14 @@ NvsProp<uint32_t> bootCount{"bootCount"};
 /** Time series storage */
 TsStore tsStore;
 
+BootMode bootMode;
+
+#if defined(__has_include) && __has_include("mypreset.h")
+#include "mypreset.h"
+#else
+#include "preset.h"
+#endif
+
 void setup() {
   Serial0.begin(115200);
   
@@ -63,14 +35,25 @@ void setup() {
     return;
   }
 
-  printWakeReason();
+  bootMode = printWakeReason();
 
   readPreferences();
 
-  connectWiFi();
+  connectWiFi(bootMode == BootMode::Menu);
   syncTime();
 
   displayInit();
+
+  if (bootMode == BootMode::Menu) {
+    setupPortalMode();
+  } else {
+    setupNormalMode();  
+  }
+}
+
+/** Normal mode displays info, then goes to deep sleep */
+void setupNormalMode() {
+  Serial0.println("Starting normal mode...");
 
   fetchAllWeatherInfo();
   fetchAllAirQualityInfo();
@@ -83,6 +66,7 @@ void setup() {
   writePreferences();
   goToDeepSleep(SLEEP_SECONDS);
 }
+
 
 /** Read preferences from NVS */
 void readPreferences() {
@@ -217,7 +201,7 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
   if (cur_time - pm2_5.time < PURPLEAIR_READ_INTERVAL) {
     Serial0.print("PM2_5 value for ");
     Serial0.print(info->name);
-    Serial0.println(" still current, skipping read");
+    Serial0.printf(" still current, skipping read (diff=%d)\n", cur_time-pm2_5.time);
     return false;
   }
 
@@ -239,6 +223,8 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
       info->purpleAirSensorIndex,
       purpleAirTargetField);
   }
+
+  Serial0.printf("Connecting to URL '%s'\n", url);
 
   HTTPClient http;
   http.begin(url);
@@ -265,16 +251,34 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
     return false;
   }
 
-  JsonObject sensor = doc["sensor"];
 
-  if (!sensor.containsKey("pm2.5_cf_1")) {
-    Serial0.println("PurpleAir pm2.5_cf_1 missing");
+  JsonVariant valueNode = doc["sensor"][purpleAirTargetField];
+
+  if (valueNode.isNull()) {
+    valueNode = doc["sensor"]["stats"][purpleAirTargetField];
+  }
+  if (valueNode.isNull()) {
+    Serial0.printf("Missing/invalid PurpleAir field: '%s'\n", purpleAirTargetField);
     return false;
   }
 
-  pm2_5.value = sensor["pm2.5_cf_1"].as<float>();
-  pm2_5.time = cur_time;
-  info->pm2_5.set(pm2_5);
+  float value = valueNode | NAN;
+
+  uint32_t readingTime = doc["data_time_stamp"] | 0;
+
+  if (readingTime == 0) {
+    Serial0.printf("PurpleAir response missing time stamp, defaulting to current time\n");
+    readingTime = cur_time;
+  }
+
+  // JsonObject sensor = doc["sensor"];
+
+  // if (!sensor.containsKey(purpleAirTargetField)) {
+  //   Serial0.printf("PurpleAir '%s' missing\n", purpleAirTargetField);
+  //   return false;
+  // }
+
+  info->pm2_5.set(TimedValue{readingTime, value});
   tsStore.append(info->pm2_5.getKey(), pm2_5);
 
   return true;
@@ -296,14 +300,36 @@ void fetchAllAirQualityInfo() {
 }
 
 /** Connect to WiFi */
-void connectWiFi() {
+void connectWiFi(bool access_point) {
+  if (access_point) {
+    WiFi.mode(WIFI_AP_STA);
+
+    WiFi.softAP(PORTAL_SSID, PORTAL_PWD);
+
+    Serial0.printf("Access point '%s' open\n", PORTAL_SSID);
+    Serial0.print("AP IP: ");
+    Serial0.println(WiFi.softAPIP());
+  } else {
+    WiFi.mode(WIFI_STA);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    return;
+  }
+
   WiFi.begin(ssid, pwd);
+
   Serial0.printf("Connecting to WiFi network '%s'", ssid);
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial0.print(".");
   }
+
   Serial0.println("\nWiFi connected");
+
+  Serial0.print("STA IP: ");
+  Serial0.println(WiFi.localIP());
 }
 
 #include <time.h>
@@ -382,6 +408,21 @@ void displayInfo() {
 }
 
 /** Deep sleep */
+// void goToDeepSleep(uint64_t seconds) {
+//   Serial0.println("Going to deep sleep...");
+//   Serial0.flush();
+
+//   WiFi.disconnect(true);
+//   WiFi.mode(WIFI_OFF);
+//   btStop();
+
+//   pinMode(MENU_KEY, INPUT);
+
+//   esp_sleep_enable_timer_wakeup(seconds * 1000000ULL);
+//   esp_sleep_enable_ext0_wakeup(MENU_KEY, 0);
+//   esp_deep_sleep_start();
+// }
+/** Deep sleep */
 void goToDeepSleep(uint64_t seconds) {
   Serial0.println("Going to deep sleep...");
   Serial0.flush();
@@ -390,23 +431,47 @@ void goToDeepSleep(uint64_t seconds) {
   WiFi.mode(WIFI_OFF);
   btStop();
 
-  pinMode(MENU_KEY, INPUT);
+  pinMode(MENU_KEY, INPUT_PULLUP);
+  pinMode(EXIT_KEY, INPUT_PULLUP);
 
   esp_sleep_enable_timer_wakeup(seconds * 1000000ULL);
-  esp_sleep_enable_ext0_wakeup(MENU_KEY, 0);
+
+  // Wake if either button goes LOW.
+  esp_sleep_enable_ext1_wakeup(
+    (1ULL << MENU_KEY) | (1ULL << EXIT_KEY),
+    ESP_EXT1_WAKEUP_ANY_LOW
+  );
+
   esp_deep_sleep_start();
 }
 
-void printWakeReason() {
+BootMode printWakeReason() {
   esp_sleep_wakeup_cause_t reason = esp_sleep_get_wakeup_cause();
 
   if (reason == ESP_SLEEP_WAKEUP_TIMER) {
     Serial0.println("Wake reason: timer");
-  } else if (reason == ESP_SLEEP_WAKEUP_EXT0) {
-    Serial0.println("Wake reason: MENU");
-  } else {
-    Serial0.println("Wake reason: normal boot");
+    return BootMode::Timer;
   }
+
+  if (reason == ESP_SLEEP_WAKEUP_EXT1) {
+    uint64_t wakeMask = esp_sleep_get_ext1_wakeup_status();
+
+    if (wakeMask & (1ULL << MENU_KEY)) {
+      Serial0.println("Wake reason: MENU");
+      return BootMode::Menu;
+    }
+
+    if (wakeMask & (1ULL << EXIT_KEY)) {
+      Serial0.println("Wake reason: EXIT");
+      return BootMode::Exit;
+    }
+
+    Serial0.println("Wake reason: EXT1");
+    return BootMode::Normal;
+  }
+
+  Serial0.println("Wake reason: normal boot");
+  return BootMode::Normal;
 }
 
 void loop() { }
