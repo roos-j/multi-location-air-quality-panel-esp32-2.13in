@@ -1,4 +1,5 @@
 #include "app.h"
+#include "portal.h"
 #include "weather_icons.h"
 
 /* TODO:
@@ -37,6 +38,9 @@ void setup() {
 
   bootMode = printWakeReason();
 
+  if (bootMode == BootMode::Menu) {
+    captureDefaultConfig();
+  }
   readPreferences();
 
   connectWiFi(bootMode == BootMode::Menu);
@@ -64,43 +68,137 @@ void setupNormalMode() {
   Serial0.printf("Time series storage: %llu bytes\n", bytes);
 
   writePreferences();
-  goToDeepSleep(SLEEP_SECONDS);
+  goToDeepSleep(sleepSeconds);
 }
 
 
 /** Read preferences from NVS */
 void readPreferences() {
-  prefs.begin("state", true);
-  bootCount.load(prefs, 0);
-  Serial0.printf("Boot count: %u\n", bootCount.get());
-  static char pm2_5Keys[2*N][32]; // This is a bit hacky, refactor
-  for (uint8_t i = 0; i < N; i++) {
+  loadConfigPreferences();
+  loadStatePreferences();
+}
+
+char pm2_5Keys[MAX_LOCATIONS][16];
+char pm2_5MaxKeys[MAX_LOCATIONS][16];
+
+void initLocationStateKeys() {
+  for (uint8_t i = 0; i < MAX_LOCATIONS; i++) {
     snprintf(pm2_5Keys[i], sizeof(pm2_5Keys[i]), "%s_pm25", locations[i].name);
+    snprintf(pm2_5MaxKeys[i], sizeof(pm2_5MaxKeys[i]), "%s_pm25max", locations[i].name);
+
     locations[i].pm2_5 = NvsProp<TimedValue>(pm2_5Keys[i]);
+    locations[i].pm2_5max = NvsProp<TimedValue>(pm2_5MaxKeys[i]);
+  }
+}
+
+uint8_t visibleLocationSlots() {
+  const uint16_t headerY = 3 * PAD;
+  const uint16_t rowStartY = headerY + 16 + PAD;
+  const uint16_t footerReserve = 14 + PAD;
+  const uint16_t rowStep = FONTSIZE + PAD;
+
+  if (SCR_HEIGHT <= rowStartY + footerReserve) {
+    return 0;
+  }
+
+  uint16_t available = SCR_HEIGHT - rowStartY - footerReserve;
+  uint8_t rows = available / rowStep;
+
+  return rows;
+}
+
+bool loadConfigPreferences() {
+  if (!prefs.begin("config", true)) {
+    Serial0.println("Config NVS open failed");
+    return false;
+  }
+
+  prefs.getString("p_ssid", portal_ssid, sizeof(portal_ssid));
+  prefs.getString("p_pwd", portal_pwd, sizeof(portal_pwd));
+  prefs.getString("w_ssid", ssid, sizeof(ssid));
+  prefs.getString("w_pwd", pwd, sizeof(pwd));
+  prefs.getString("pa_key", purpleAirApiKey, sizeof(purpleAirApiKey));
+  prefs.getString("pa_field", purpleAirTargetField, sizeof(purpleAirTargetField));
+
+  sleepSeconds = prefs.getUInt("sleep_s", sleepSeconds);
+  if (sleepSeconds == 0) {
+    sleepSeconds = 1;
+  }
+
+  pm25ReadInterval = prefs.getUInt("pm25int", pm25ReadInterval);
+  if (pm25ReadInterval == 0) {
+    pm25ReadInterval = 1;
+  }
+
+  uint32_t count = prefs.getUInt("loc_cnt", locationCount);
+  if (count < 1) {
+    count = 1;
+  } else if (count > MAX_LOCATIONS) {
+    count = MAX_LOCATIONS;
+  }
+  locationCount = static_cast<uint8_t>(count);
+
+  for (uint8_t i = 0; i < MAX_LOCATIONS; i++) {
+    char key[16];
+
+    snprintf(key, sizeof(key), "l%u_name", i);
+    prefs.getString(key, locations[i].name, sizeof(locations[i].name));
+
+    snprintf(key, sizeof(key), "l%u_lat", i);
+    locations[i].latitude = prefs.getFloat(key, locations[i].latitude);
+
+    snprintf(key, sizeof(key), "l%u_lon", i);
+    locations[i].longitude = prefs.getFloat(key, locations[i].longitude);
+
+    snprintf(key, sizeof(key), "l%u_idx", i);
+    locations[i].purpleAirSensorIndex = prefs.getUInt(key, locations[i].purpleAirSensorIndex);
+
+    snprintf(key, sizeof(key), "l%u_key", i);
+    prefs.getString(key, locations[i].purpleAirReadKey, sizeof(locations[i].purpleAirReadKey));
+  }
+
+  prefs.end();
+  return true;
+}
+
+void loadStatePreferences() {
+  if (!prefs.begin("state", true)) {
+    Serial0.println("State NVS open failed");
+    return;
+  }
+
+  bootCount.load(prefs, 0);
+  Serial0.printf("Boot count: %lu\n", static_cast<unsigned long>(bootCount.get()));
+
+  initLocationStateKeys();
+
+  for (uint8_t i = 0; i < MAX_LOCATIONS; i++) {
     locations[i].pm2_5.load(prefs, TimedValue{});
     Serial0.print(locations[i].name);
     Serial0.print(" last PurpleAir read PM2.5: ");
     printTimestamp(locations[i].pm2_5.get().time);
     Serial0.println();
 
-    snprintf(pm2_5Keys[i+N], sizeof(pm2_5Keys[i+N]), "%s_pm25max", locations[i].name);
-    locations[i].pm2_5max = NvsProp<TimedValue>(pm2_5Keys[i+N]);
     locations[i].pm2_5max.load(prefs, TimedValue{});
     Serial0.print(locations[i].name);
     Serial0.printf(" daily max value %.f at ", locations[i].pm2_5max.get().value);
     printTimestamp(locations[i].pm2_5max.get().time);
     Serial0.println();
   }
+
   prefs.end();
 }
 
 /** Write preferences to NVS */
 void writePreferences() {
-  prefs.begin("state", false);
+  if (!prefs.begin("state", false)) {
+    Serial0.println("State NVS open failed");
+    return;
+  }
 
   bootCount.set(bootCount.get() + 1);
   bootCount.save(prefs);
-  for (uint8_t i = 0; i < N; i++) {
+  for (uint8_t i = 0; i < MAX_LOCATIONS; i++) {
     locations[i].pm2_5.save(prefs);
     locations[i].pm2_5max.save(prefs);
   }
@@ -177,9 +275,7 @@ bool fetchWeatherInfo(WeatherLocation *info) {
 
 
 void fetchAllWeatherInfo() {
-  for (uint8_t i = 0; i < N; i++) {
-    float tempF;
-
+  for (uint8_t i = 0; i < locationCount; i++) {
     bool ok = fetchWeatherInfo(&locations[i]);
 
     if (ok) {
@@ -236,7 +332,7 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
 
   uint32_t cur_time = (uint32_t)mktime(&timeinfo);
   TimedValue pm2_5 = info->pm2_5.get();
-  if (cur_time - pm2_5.time < PURPLEAIR_READ_INTERVAL) {
+  if (cur_time - pm2_5.time < pm25ReadInterval) {
     Serial0.print("PM2_5 value for ");
     Serial0.print(info->name);
     Serial0.printf(" still current, skipping read (diff=%d)\n", cur_time-pm2_5.time);
@@ -245,7 +341,7 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
 
   char url[256];
 
-  if (info->purpleAirReadKey != nullptr && info->purpleAirReadKey[0] != '\0') {
+  if (info->purpleAirReadKey[0] != '\0') {
     snprintf(
       url,
       sizeof(url),
@@ -320,7 +416,7 @@ bool fetchAirQualityInfo(WeatherLocation *info) {
 }
 
 void fetchAllAirQualityInfo() {
-  for (uint8_t i = 0; i < N; i++) {
+  for (uint8_t i = 0; i < locationCount; i++) {
     bool ok = fetchAirQualityInfo(&locations[i]);
     if (ok) {
       Serial0.print(locations[i].name);
@@ -339,9 +435,9 @@ void connectWiFi(bool access_point) {
   if (access_point) {
     WiFi.mode(WIFI_AP_STA);
 
-    WiFi.softAP(PORTAL_SSID, PORTAL_PWD);
+    WiFi.softAP(portal_ssid, portal_pwd);
 
-    Serial0.printf("Access point '%s' open\n", PORTAL_SSID);
+    Serial0.printf("Access point '%s' open\n", portal_ssid);
     Serial0.print("AP IP: ");
     Serial0.println(WiFi.softAPIP());
   } else {
@@ -408,7 +504,12 @@ void displayInfo() {
 
   y += 16 + PAD;
 
-  for (uint8_t i = 0; i < N; i++) {
+  uint8_t visibleLocations = visibleLocationSlots();
+  if (visibleLocations > locationCount) {
+    visibleLocations = locationCount;
+  }
+
+  for (uint8_t i = 0; i < visibleLocations; i++) {
     displayDrawString(nameX, y, locations[i].name, BLACK, FONTSIZE);
 
     displayDrawBitmap(iconX, y, weatherCodeToBitmap(locations[i].weathercode), 24, 24, BLACK);
@@ -447,21 +548,6 @@ void displayInfo() {
   Serial0.println("AQ display refreshed");
 }
 
-/** Deep sleep */
-// void goToDeepSleep(uint64_t seconds) {
-//   Serial0.println("Going to deep sleep...");
-//   Serial0.flush();
-
-//   WiFi.disconnect(true);
-//   WiFi.mode(WIFI_OFF);
-//   btStop();
-
-//   pinMode(MENU_KEY, INPUT);
-
-//   esp_sleep_enable_timer_wakeup(seconds * 1000000ULL);
-//   esp_sleep_enable_ext0_wakeup(MENU_KEY, 0);
-//   esp_deep_sleep_start();
-// }
 /** Deep sleep */
 void goToDeepSleep(uint64_t seconds) {
   Serial0.println("Going to deep sleep...");

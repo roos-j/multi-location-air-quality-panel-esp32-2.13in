@@ -1,6 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include <Arduino.h>
 #include <Preferences.h>
 
 /** Tracks a property stored in NVS. Keeps a dirty flag to avoid redundant writes. */
@@ -104,5 +105,9 @@ public:
 };
 
 void formatBytes(size_t bytes, char *out, size_t outSize);
+bool copyCString(char *out, size_t outSize, const char *value);
+bool parseUint32(const char *text, uint32_t &out);
+bool parseFloatValue(const char *text, float &out);
+bool htmlEscape(const char *input, char *out, size_t outSize);
 
 #endif
