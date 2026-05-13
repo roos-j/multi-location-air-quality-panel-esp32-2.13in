@@ -14,6 +14,8 @@ Screenshot:
 - Monochrome 250x122 display, ESP32S3 with WiFi
 - Weather data from [open-meteo](https://open-meteo.com/) API
 - PM2.5 data from [PurpleAir](https://www2.purpleair.com/) sensors
+- Time series data stored in flash
+- Web portal for config and time series management
 - Display stays on without power, only requires power to update data
 - Custom SSD1680 display driver
 - Open source font (Noto Sans Mono Regular)
@@ -28,9 +30,10 @@ Screenshot:
 - Download [Arduino IDE](https://www.arduino.cc/en/software/)
 - Install ESP32 libraries and ArduinoJson
 - Download/clone this repository and open in Arduino IDE
-- Configure target locations and PurpleAir sensors in `preset.h` (get a [PurpleAir API key](https://community.purpleair.com/t/about-the-purpleair-api/7145))
+- (Optional) Configure default locations and PurpleAir sensors in `preset.h` (get a [PurpleAir API key](https://community.purpleair.com/t/about-the-purpleair-api/7145))
 - Connect board via USB, select port and select `ESP32S3 Dev Module` in Arduino IDE, then compile/upload
+- Change settings or view/download time series data via web portal available after pressing `MENU`
 
 ### AI Usage
 
-gpt-5.5 was used to generate font bitmaps, weather icons, and a lot of the utility code.
+gpt-5.5 and codex/gpt-5.4-mini-xhigh were used to generate font bitmaps, weather icons, a lot of the utility code, and most of the web portal.
