@@ -208,12 +208,13 @@ void writePreferences() {
 
 /** Print unix timestamp to serial, formatted to current timezone */ 
 void printTimestamp(uint32_t ts) {
-  time_t raw = (time_t)ts;
-  tm timeinfo;
+  char buf[24];
 
-  localtime_r(&raw, &timeinfo);  // fill timeinfo from timestamp as local time
-
-  Serial0.print(&timeinfo, "%Y-%m-%d %H:%M:%S");
+  if (formatLocalTimestamp(ts, buf, sizeof(buf))) {
+    Serial0.print(buf);
+  } else {
+    Serial0.print("n/a");
+  }
 }
 
 bool fetchWeatherInfo(WeatherLocation *info) {

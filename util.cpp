@@ -10,6 +10,24 @@ static int monthIndex(int year, int month) {
   return year * 12 + (month - 1);
 }
 
+static bool formatTimestamp(uint32_t timestamp, char *out, size_t outSize, bool localTime, const char *format) {
+  if (timestamp == 0 || out == nullptr || outSize == 0 || format == nullptr) {
+    return false;
+  }
+
+  time_t raw = static_cast<time_t>(timestamp);
+  struct tm timeinfo;
+
+  if (localTime) {
+    localtime_r(&raw, &timeinfo);
+  } else {
+    gmtime_r(&raw, &timeinfo);
+  }
+
+  size_t n = strftime(out, outSize, format, &timeinfo);
+  return n > 0;
+}
+
 static bool monthIndexFromTimestamp(uint32_t timestamp, int &outMonthIndex) {
   if (timestamp == 0) {
     return false;
@@ -41,6 +59,65 @@ static bool normalizeTsPath(char *out, size_t outSize, const char *name) {
   }
 
   return n > 0 && static_cast<size_t>(n) < outSize;
+}
+
+bool makeMonthPath(char *out, size_t outSize, const char *seriesKey, int year, int month) {
+  if (out == nullptr || outSize == 0 || seriesKey == nullptr || seriesKey[0] == '\0') {
+    return false;
+  }
+
+  if (month < 1 || month > 12) {
+    return false;
+  }
+
+  int n = snprintf(
+    out,
+    outSize,
+    "%s/%s_%04d%02d.bin",
+    tsDir,
+    seriesKey,
+    year,
+    month
+  );
+
+  return n > 0 && static_cast<size_t>(n) < outSize;
+}
+
+bool parseMonthText(const char *text, int &outYear, int &outMonth) {
+  if (text == nullptr) {
+    return false;
+  }
+
+  if (strlen(text) != 7 || text[4] != '-') {
+    return false;
+  }
+
+  for (int i = 0; i < 7; i++) {
+    if (i == 4) {
+      continue;
+    }
+    if (text[i] < '0' || text[i] > '9') {
+      return false;
+    }
+  }
+
+  int year =
+    (text[0] - '0') * 1000 +
+    (text[1] - '0') * 100 +
+    (text[2] - '0') * 10 +
+    (text[3] - '0');
+
+  int month =
+    (text[5] - '0') * 10 +
+    (text[6] - '0');
+
+  if (month < 1 || month > 12) {
+    return false;
+  }
+
+  outYear = year;
+  outMonth = month;
+  return true;
 }
 
 static bool monthIndexFromPath(const char *path, int &outMonthIndex) {
@@ -215,18 +292,7 @@ bool TsStore::makePath(char *out, size_t outSize, const char *seriesKey, uint32_
 
   int year = timeinfo.tm_year + 1900;
   int month = timeinfo.tm_mon + 1;
-
-  int n = snprintf(
-    out,
-    outSize,
-    "%s/%s_%04d%02d.bin",
-    tsDir,
-    seriesKey,
-    year,
-    month
-  );
-
-  return n > 0 && static_cast<size_t>(n) < outSize;
+  return makeMonthPath(out, outSize, seriesKey, year, month);
 }
 
 void formatBytes(size_t bytes, char *out, size_t outSize) {
@@ -237,6 +303,14 @@ void formatBytes(size_t bytes, char *out, size_t outSize) {
   } else {
     snprintf(out, outSize, "%.2f MB", bytes / (1024.0f * 1024.0f));
   }
+}
+
+bool formatLocalTimestamp(uint32_t timestamp, char *out, size_t outSize) {
+  return formatTimestamp(timestamp, out, outSize, true, "%Y-%m-%d %H:%M");
+}
+
+bool formatUtcMonth(uint32_t timestamp, char *out, size_t outSize) {
+  return formatTimestamp(timestamp, out, outSize, false, "%Y-%m");
 }
 
 bool copyCString(char *out, size_t outSize, const char *value) {

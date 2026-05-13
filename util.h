@@ -105,6 +105,10 @@ public:
 };
 
 void formatBytes(size_t bytes, char *out, size_t outSize);
+bool formatLocalTimestamp(uint32_t timestamp, char *out, size_t outSize);
+bool formatUtcMonth(uint32_t timestamp, char *out, size_t outSize);
+bool parseMonthText(const char *text, int &outYear, int &outMonth);
+bool makeMonthPath(char *out, size_t outSize, const char *seriesKey, int year, int month);
 bool copyCString(char *out, size_t outSize, const char *value);
 bool parseUint32(const char *text, uint32_t &out);
 bool parseFloatValue(const char *text, float &out);
