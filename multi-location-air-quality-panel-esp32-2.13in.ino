@@ -230,7 +230,7 @@ bool fetchWeatherInfo(WeatherLocation *info) {
     "https://api.open-meteo.com/v1/forecast"
     "?latitude=%f"
     "&longitude=%f"
-    "&current=temperature_2m,relative_humidity_2m,weather_code"
+    "&current=temperature_2m,relative_humidity_2m,weather_code,is_day"
     "&temperature_unit=celsius"
     "&forecast_days=1",
     info->latitude,
@@ -262,7 +262,10 @@ bool fetchWeatherInfo(WeatherLocation *info) {
 
   JsonObject current = doc["current"];
 
-  if (!current.containsKey("temperature_2m") || !current.containsKey("relative_humidity_2m") || !current.containsKey("weather_code")) {
+  if (!current.containsKey("temperature_2m") ||
+      !current.containsKey("relative_humidity_2m") ||
+      !current.containsKey("weather_code") ||
+      !current.containsKey("is_day")) {
     Serial0.println("Weather fields missing");
     return false;
   }
@@ -270,6 +273,7 @@ bool fetchWeatherInfo(WeatherLocation *info) {
   info->temperature = current["temperature_2m"].as<float>();
   info->humidity = current["relative_humidity_2m"].as<uint8_t>();
   info->weathercode = current["weather_code"].as<uint8_t>();
+  info->isDay = current["is_day"].as<uint8_t>();
 
   return true;
 }
@@ -513,7 +517,14 @@ void displayInfo() {
   for (uint8_t i = 0; i < visibleLocations; i++) {
     displayDrawString(nameX, y, locations[i].name, BLACK, FONTSIZE);
 
-    displayDrawBitmap(iconX, y, weatherCodeToBitmap(locations[i].weathercode), 24, 24, BLACK);
+    displayDrawBitmap(
+      iconX,
+      y,
+      weatherCodeToBitmap(locations[i].weathercode, locations[i].isDay != 0),
+      24,
+      24,
+      BLACK
+    );
 
     snprintf(linebuf, sizeof(linebuf), "%.0f", locations[i].temperature);
     displayDrawString(tempX, y, linebuf, BLACK, FONTSIZE);

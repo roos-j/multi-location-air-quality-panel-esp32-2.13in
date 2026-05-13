@@ -20,6 +20,7 @@ WeatherLocation locations[MAX_LOCATIONS] = {
     .purpleAirReadKey = "",
     .temperature = 0,
     .weathercode = 0,
+    .isDay = 1,
     .humidity = 0
   },
   {
@@ -30,6 +31,7 @@ WeatherLocation locations[MAX_LOCATIONS] = {
     .purpleAirReadKey = "",
     .temperature = 0,
     .weathercode = 0,
+    .isDay = 1,
     .humidity = 0
   },
   {
@@ -40,6 +42,7 @@ WeatherLocation locations[MAX_LOCATIONS] = {
     .purpleAirReadKey = "",
     .temperature = 0,
     .weathercode = 0,
+    .isDay = 1,
     .humidity = 0
   }
 };

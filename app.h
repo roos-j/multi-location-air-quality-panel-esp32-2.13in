@@ -24,6 +24,7 @@ struct WeatherLocation {
   NvsProp<TimedValue> pm2_5max{nullptr}; // Track daily maximum value
   float temperature;
   uint8_t weathercode;  // Sunny/rainy/etc.
+  uint8_t isDay;  // 1 when Open-Meteo reports daylight at the location
   uint8_t humidity;
 };
 

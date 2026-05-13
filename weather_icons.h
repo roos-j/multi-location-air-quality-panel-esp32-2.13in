@@ -112,9 +112,9 @@ const uint8_t ICON_UNKNOWN[72] PROGMEM = {
 };
 
 /** Convert open-meteo weather code to a bitmap icon */
-const uint8_t *weatherCodeToBitmap(uint8_t code) {
-    if (code == 0) return ICON_SUN;
-    if (code == 1 || code == 2) return ICON_PARTLY_CLOUDY;
+const uint8_t *weatherCodeToBitmap(uint8_t code, bool isDay = true) {
+    if (code == 0) return isDay ? ICON_SUN : ICON_MOON;
+    if (code == 1 || code == 2) return isDay ? ICON_PARTLY_CLOUDY : ICON_PARTLY_CLOUDY_NIGHT;
     if (code == 3) return ICON_CLOUD;
     if (code == 45 || code == 48) return ICON_FOG;
     if ((code >= 51 && code <= 57) || code == 66 || code == 67) return ICON_DRIZZLE;
